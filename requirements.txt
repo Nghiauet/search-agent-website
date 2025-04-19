@@ -1,0 +1,14 @@
+mcp
+langchain-mcp-adapters
+langgraph
+langchain-openai
+langchain-google-genai
+aiohttp
+beautifulsoup4
+python-dotenv
+loguru
+cachetools
+pytest
+pydantic-settings
+**/__init__.py
+
