@@ -1,9 +1,13 @@
+# Environment variables
+.env
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -15,36 +19,40 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
-# Virtual Environments
+# Virtual Environment
 venv/
-env/
 ENV/
+env/
 
-# IDE
+# IDE files
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# Environment variables
-.env
-
-# Log files
-*.log
-
-# Cache files
-.cache/
-.pytest_cache/
-
-# OS specific
 .DS_Store
-Thumbs.db
-.env**
-client/__init__.py
-search_server/__init__.py
-utils/__init__.py
+
+# Logs
+*.log
+logs/
+log/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
