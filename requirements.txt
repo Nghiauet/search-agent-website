@@ -14,3 +14,4 @@ langgraph>=0.0.20
 langchain-mcp-adapters>=0.0.2
 pydantic-settings>=2.0.0
 brotli>=1.0.9
+colorama>=0.4.4
