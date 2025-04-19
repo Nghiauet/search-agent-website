@@ -1,6 +1,0 @@
-{
-  "dependencies": ["."],
-  "graphs": {
-    "agent": "./client/graph.py:make_graph"
-  }
-}

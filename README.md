@@ -1,117 +1,82 @@
-# MCP Agent with Search Capabilities
+# MCP Agent with Gemini
 
-This project implements an AI assistant using Google's Gemini model with web search capabilities through the Multi-modal Collaborative Protocol (MCP).
+A terminal-based agent using Google Gemini model with search capabilities.
+
+## Refactored Architecture
+
+The code has been refactored to improve structure, maintainability, and readability while keeping the same functionality. Key improvements include:
+
+1. **Modular Structure**: Code is organized into clear modules with specific responsibilities
+2. **Separation of Concerns**: Agent logic, search functionality, and utilities are cleanly separated
+3. **Improved Error Handling**: More consistent error handling throughout the codebase
+4. **Centralized Logging**: Consistent logging configuration across all components
+5. **Better Configuration Management**: Centralized settings with environment variable support
+
+## Project Structure
+
+```
+mcp-agent/
+│
+├── main.py               # Main entry point for the application
+├── search_server.py      # Entry point for running the search server
+├── .env                  # Environment variables
+├── README.md             # Project documentation
+│
+├── agent/                # Agent implementation
+│   ├── __init__.py
+│   ├── terminal_agent.py # Core agent implementation
+│   └── config.py         # Configuration for the agent
+│
+├── search/               # Search functionality
+│   ├── __init__.py
+│   ├── server.py         # MCP search server implementation
+│   ├── engine.py         # Search engine implementation
+│   └── content.py        # Web content extraction 
+│
+└── utils/                # Shared utilities
+    ├── __init__.py
+    ├── config.py         # Global configuration
+    └── logging.py        # Centralized logging setup
+```
+
+## Setup and Usage
+
+1. **Install dependencies**:
+   ```
+   pip install -r requirements.txt
+   ```
+
+2. **Configure environment variables** in a `.env` file:
+   ```
+   GOOGLE_GENAI_API_KEY=your_api_key_here
+   SEARCH_ENGINE_API_KEY=your_search_api_key_here
+   SEARCH_ENGINE_CSE_ID=your_search_cse_id_here
+   DEFAULT_MODEL=gemini-2.5-flash-preview-04-17
+   ```
+
+3. **Run the agent**:
+   ```
+   python main.py
+   ```
 
 ## Features
 
-- Terminal-based AI assistant using Gemini models
-- Web search capabilities using Google Custom Search API
-- Advanced search options (domain filtering, etc.)
-- Robust error handling and fallback mechanisms
+- **Terminal Interface**: Easy-to-use interactive terminal
+- **Web Search**: Query the web for information
+- **Conversation History**: Maintains context across interactions
+- **Advanced Search Options**: Domain filtering and more
 
-## Installation
+## Commands
 
-### Prerequisites
+- **help**: Show available tools and commands
+- **clear**: Clear conversation history
+- **exit/quit/q**: Exit the program
 
-- Python 3.10 or higher
-- Conda or pip for package management
-- Google API keys (Gemini API and Custom Search API)
+## Advanced Configuration
 
-### Setup
+You can customize the agent behavior by modifying settings in the `.env` file:
 
-1. Clone this repository
-2. Create and activate a virtual environment:
-
-```bash
-conda create -n mcp-agent python=3.13
-conda activate mcp-agent
-```
-
-3. Install the required packages:
-
-```bash
-pip install -r requirements.txt
-```
-
-4. Run the dependency installer to ensure all needed packages are installed:
-
-```bash
-python install_dependencies.py
-```
-
-5. Create a `.env` file with your API keys:
-
-```
-# API Keys
-GOOGLE_GENAI_API_KEY=your_gemini_api_key
-DEFAULT_MODEL=gemini-2.5-flash-preview-04-17
-
-# Server Settings
-MCP_SERVER_PORT=8000
-
-# Search Engine Settings
-SEARCH_ENGINE_API_KEY=your_google_search_api_key
-SEARCH_ENGINE_CSE_ID=your_custom_search_engine_id
-```
-
-## Usage
-
-### Running the Agent
-
-To start the Gemini terminal agent:
-
-```bash
-python gemini_agent.py
-```
-
-This will launch an interactive terminal where you can chat with the agent and ask it to search for information online.
-
-### Commands
-
-The agent supports the following commands:
-
-- `help`: Display available tools and commands
-- `clear`: Clear conversation history
-- `exit`, `quit`, or `q`: Exit the program
-
-### Testing
-
-To test the search functionality:
-
-```bash
-python test_search.py
-```
-
-To test both the search and agent functionality:
-
-```bash
-python test.py
-```
-
-## Troubleshooting
-
-### Browser Content Issues
-
-If you encounter errors related to "Brotli compression" when the agent tries to access certain websites, ensure you have the Brotli library installed:
-
-```bash
-pip install brotli
-```
-
-You can also run the dependency installer to fix this:
-
-```bash
-python install_dependencies.py
-```
-
-### API Key Issues
-
-If you encounter authentication errors, check that your API keys are correctly set in the `.env` file.
-
-### Connection Issues
-
-If search results fail to load, check your internet connection and whether the Google Custom Search API is working properly.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+- **DEFAULT_MODEL**: Choose which Gemini model to use
+- **MAX_CONCURRENT_REQUESTS**: Control the concurrency of requests
+- **CACHE_TTL**: Set the cache time-to-live in seconds
+- **MAX_CONTENT_LENGTH**: Maximum content length to extract from websites
