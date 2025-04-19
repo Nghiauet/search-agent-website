@@ -1,116 +1,117 @@
-# MCP Search Agent
+# MCP Agent with Search Capabilities
 
-This project demonstrates how to create an agent that uses the Model Context Protocol (MCP) to integrate a search engine with large language models (LLMs) via LangChain and LangGraph.
+This project implements an AI assistant using Google's Gemini model with web search capabilities through the Multi-modal Collaborative Protocol (MCP).
 
 ## Features
 
-- 🔍 Search Engine MCP Server: Implements the MCP protocol for web search capabilities
-- 🤖 Agent Integration: Connect the search tools to LangChain and LangGraph agents
-- 🧩 Multiple LLM Support: Works with OpenAI and Google Gemini models
-- 📊 Flexible Transport: Supports various transport methods (stdio, SSE, WebSocket)
-
-## Project Structure
-
-```
-mcp-agent/
-├── search_server/              # Search engine MCP server
-│   └── search_mcp_server.py    # MCP server implementation 
-├── client/                     # Client implementations
-│   ├── agent.py                # LangChain agent with search tools
-│   └── graph.py                # LangGraph implementation
-├── utils/                      # Utilities
-│   ├── config.py               # Configuration management
-│   └── search_utils.py         # Search engine utilities
-├── example.py                  # Example script
-├── requirements.txt            # Project dependencies
-├── .env.example                # Environment variable template
-└── README.md                   # Project documentation
-```
+- Terminal-based AI assistant using Gemini models
+- Web search capabilities using Google Custom Search API
+- Advanced search options (domain filtering, etc.)
+- Robust error handling and fallback mechanisms
 
 ## Installation
 
-1. Clone the repository
-2. Install the dependencies:
+### Prerequisites
+
+- Python 3.10 or higher
+- Conda or pip for package management
+- Google API keys (Gemini API and Custom Search API)
+
+### Setup
+
+1. Clone this repository
+2. Create and activate a virtual environment:
+
+```bash
+conda create -n mcp-agent python=3.13
+conda activate mcp-agent
+```
+
+3. Install the required packages:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file based on `.env.example` and add your API keys:
+4. Run the dependency installer to ensure all needed packages are installed:
 
 ```bash
-cp .env.example .env
-# Edit the .env file with your API keys
+python install_dependencies.py
+```
+
+5. Create a `.env` file with your API keys:
+
+```
+# API Keys
+GOOGLE_GENAI_API_KEY=your_gemini_api_key
+DEFAULT_MODEL=gemini-2.5-flash-preview-04-17
+
+# Server Settings
+MCP_SERVER_PORT=8000
+
+# Search Engine Settings
+SEARCH_ENGINE_API_KEY=your_google_search_api_key
+SEARCH_ENGINE_CSE_ID=your_custom_search_engine_id
 ```
 
 ## Usage
 
-### Running the Search MCP Server
+### Running the Agent
 
-You can run the search MCP server directly:
-
-```bash
-python -m search_server.search_mcp_server --transport stdio
-```
-
-Supported transport options:
-- `stdio`: Standard input/output (default)
-- `sse`: Server-Sent Events over HTTP
-- `ws`: WebSocket
-
-For HTTP-based transports, you can specify a port:
+To start the Gemini terminal agent:
 
 ```bash
-python -m search_server.search_mcp_server --transport sse --port 8000
+python gemini_agent.py
 ```
 
-### Using the Agent
+This will launch an interactive terminal where you can chat with the agent and ask it to search for information online.
 
-Run the example script:
+### Commands
+
+The agent supports the following commands:
+
+- `help`: Display available tools and commands
+- `clear`: Clear conversation history
+- `exit`, `quit`, or `q`: Exit the program
+
+### Testing
+
+To test the search functionality:
 
 ```bash
-python example.py
+python test_search.py
 ```
 
-This will:
-1. Start the search MCP server
-2. Connect the agent to the server
-3. Run sample queries through the agent
-
-### Using with LangGraph
-
-To use with LangGraph API server:
+To test both the search and agent functionality:
 
 ```bash
-langchain serve
+python test.py
 ```
 
-This will:
-1. Load the graph configuration from langgraph.json
-2. Start the LangGraph API server
-3. Make the agent available at the API endpoint
+## Troubleshooting
 
-## Customization
+### Browser Content Issues
 
-### Adding New MCP Servers
+If you encounter errors related to "Brotli compression" when the agent tries to access certain websites, ensure you have the Brotli library installed:
 
-You can add additional MCP servers by:
-
-1. Creating a new server module in the `search_server` directory
-2. Adding the server configuration to the `MultiServerMCPClient` in `client/agent.py`
-
-### Using Different LLMs
-
-The project supports OpenAI and Google Gemini models. You can configure which model to use:
-
-```python
-agent = await create_agent_with_search(
-    model_provider="openai",  # or "google"
-    model_name="gpt-4o",      # or "gemini-1.5-pro"
-    search_server_transport="stdio"
-)
+```bash
+pip install brotli
 ```
+
+You can also run the dependency installer to fix this:
+
+```bash
+python install_dependencies.py
+```
+
+### API Key Issues
+
+If you encounter authentication errors, check that your API keys are correctly set in the `.env` file.
+
+### Connection Issues
+
+If search results fail to load, check your internet connection and whether the Google Custom Search API is working properly.
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the LICENSE file for details.

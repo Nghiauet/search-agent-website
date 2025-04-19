@@ -2,7 +2,12 @@ from mcp.server.fastmcp import FastMCP
 from loguru import logger
 import asyncio
 import sys
+import os
 from typing import Optional, List, Dict, Any
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.config import settings
 
 # Configure logging
 logger.remove()

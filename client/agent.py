@@ -1,6 +1,11 @@
 import asyncio
 import os
+import sys
 from typing import Dict, List, Any
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.config import settings
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
@@ -12,6 +17,20 @@ from loguru import logger
 # Set up environment to load API keys
 from dotenv import load_dotenv
 load_dotenv()
+
+# Ensure API keys are set in environment
+def setup_environment():
+    """Setup environment variables for API keys if needed."""
+    # If GOOGLE_GENAI_API_KEY is in settings but not in environment, set it
+    if settings.GOOGLE_GENAI_API_KEY and "GOOGLE_GENAI_API_KEY" not in os.environ:
+        os.environ["GOOGLE_GENAI_API_KEY"] = settings.GOOGLE_GENAI_API_KEY
+    
+    # Ensure Google API key is set for authentication
+    if settings.GOOGLE_GENAI_API_KEY and "GOOGLE_API_KEY" not in os.environ:
+        os.environ["GOOGLE_API_KEY"] = settings.GOOGLE_GENAI_API_KEY
+
+# Initialize environment
+setup_environment()
 
 async def create_agent_with_search(
     model_provider: str = "openai",
@@ -33,9 +52,15 @@ async def create_agent_with_search(
     """
     # Configure the model
     if model_provider.lower() == "openai":
-        model = ChatOpenAI(model=model_name)
+        model = ChatOpenAI(
+            model=model_name,
+            openai_api_key=settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
+        )
     elif model_provider.lower() == "google":
-        model = ChatGoogleGenerativeAI(model=model_name)
+        model = ChatGoogleGenerativeAI(
+            model=model_name,
+            google_api_key=settings.GOOGLE_GENAI_API_KEY or os.getenv("GOOGLE_GENAI_API_KEY")
+        )
     else:
         raise ValueError(f"Unsupported model provider: {model_provider}")
     

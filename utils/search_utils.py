@@ -9,16 +9,31 @@ import cachetools.func
 import re
 from loguru import logger
 
+# Try to import Brotli for content decoding - make it optional
+try:
+    import brotli
+    BROTLI_AVAILABLE = True
+    logger.info("Brotli compression support is available")
+except ImportError:
+    BROTLI_AVAILABLE = False
+    logger.warning("Brotli compression not available. Some websites may not be displayed properly. Install with: pip install brotli")
+
 from utils.config import settings
 
 # Constants for optimization
-CONNECTION_TIMEOUT = 5  # seconds
-CONTENT_TIMEOUT = 10    # seconds
-MAX_CONTENT_LENGTH = 3000  # characters
+CONNECTION_TIMEOUT = 10  # seconds (increased from 5)
+CONTENT_TIMEOUT = 15    # seconds (increased from 10)
+MAX_CONTENT_LENGTH = 5000  # characters (increased from 3000)
 CACHE_TTL = 3600  # Cache time-to-live in seconds (1 hour)
-MAX_CONCURRENT_REQUESTS = 10  # Limit concurrent requests
+MAX_CONCURRENT_REQUESTS = 5  # Limit concurrent requests (decreased from 10 for better stability)
 REQUEST_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'DNT': '1',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Cache-Control': 'max-age=0'
 }
 
 # Shared aiohttp session for connection pooling
@@ -33,6 +48,20 @@ async def get_session():
         conn = aiohttp.TCPConnector(limit=MAX_CONCURRENT_REQUESTS, ssl=False)
         _session = aiohttp.ClientSession(connector=conn)
     return _session
+
+async def retry_with_backoff(func, *args, max_retries=3, base_delay=1, **kwargs):
+    """Retry a function with exponential backoff."""
+    for retry in range(max_retries):
+        try:
+            return await func(*args, **kwargs)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            if retry == max_retries - 1:
+                raise  # Re-raise on last attempt
+            
+            # Calculate delay with exponential backoff (1s, 2s, 4s...)
+            delay = base_delay * (2 ** retry)
+            logger.warning(f"Request failed: {str(e)}. Retrying in {delay}s... (Attempt {retry+1}/{max_retries})")
+            await asyncio.sleep(delay)
 
 @cachetools.func.ttl_cache(maxsize=100, ttl=CACHE_TTL)
 async def search_google(query: str, num_results: int = 10) -> List[Dict[str, Any]]:
@@ -60,30 +89,34 @@ async def search_google(query: str, num_results: int = 10) -> List[Dict[str, Any
     try:
         # Use the shared session
         session = await get_session()
-        async with session.get(url, params=params, timeout=CONNECTION_TIMEOUT) as response:
-            if response.status != 200:
-                logger.warning(f"Google search API returned status {response.status} for query: {query}")
-                return []
+        
+        # Use retry with backoff to make request more resilient
+        async def make_search_request():
+            async with session.get(url, params=params, timeout=CONNECTION_TIMEOUT) as response:
+                if response.status != 200:
+                    logger.warning(f"Google search API returned status {response.status} for query: {query}")
+                    return []
+                return await response.json()
+        
+        # Make the request with retries
+        results = await retry_with_backoff(make_search_request, max_retries=2)
+        
+        # Check if there are search results
+        if 'items' not in results:
+            logger.info(f"No search results found for query: {query}")
+            return []
             
-            # Parse the response
-            results = await response.json()
-            
-            # Check if there are search results
-            if 'items' not in results:
-                logger.info(f"No search results found for query: {query}")
-                return []
-            
-            # Extract relevant information from search results
-            search_results = []
-            for item in results['items']:
-                search_results.append({
-                    'title': item.get('title', 'No title'),
-                    'url': item.get('link', ''),
-                    'snippet': item.get('snippet', 'No snippet')
-                })
-            
-            logger.info(f"Found {len(search_results)} search results for query: {query}")
-            return search_results
+        # Extract relevant information from search results
+        search_results = []
+        for item in results['items']:
+            search_results.append({
+                'title': item.get('title', 'No title'),
+                'url': item.get('link', ''),
+                'snippet': item.get('snippet', 'No snippet')
+            })
+        
+        logger.info(f"Found {len(search_results)} search results for query: {query}")
+        return search_results
         
     except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
         logger.error(f"Error in Google search for query '{query}': {str(e)}")
@@ -109,57 +142,99 @@ async def extract_content_from_url(url: str) -> str:
         logger.warning(f"URL points to a non-HTML file: {url}")
         return "URL points to a non-HTML file"
     
+    # Skip known problematic domains if Brotli is not available
+    problematic_domains = ['facebook.com', 'instagram.com', 'twitter.com']
+    if not BROTLI_AVAILABLE:
+        # If Brotli is not available, add domains that use Brotli compression
+        brotli_domains = ['nbcnews.com', 'cnn.com', 'edition.cnn.com', 'foxnews.com']
+        problematic_domains.extend(brotli_domains)
+    
+    if any(domain in url.lower() for domain in problematic_domains):
+        logger.warning(f"Skipping known problematic domain: {url}")
+        return f"Content from {url} (URL requires Brotli support for proper access)"
+    
     try:
-        session = await get_session()
-        async with session.get(
-            url, 
-            headers=REQUEST_HEADERS,
-            timeout=CONTENT_TIMEOUT,
-            allow_redirects=True,
-            ssl=False  # Speed up by skipping SSL verification
-        ) as response:
-            if response.status != 200:
-                logger.warning(f"Got status {response.status} when extracting content from {url}")
-                return ""
+        # Define a function to make the HTTP request with retry capability
+        async def fetch_url_content():
+            session = await get_session()
             
-            # Check content type to ensure it's HTML
-            content_type = response.headers.get('Content-Type', '')
-            if 'text/html' not in content_type.lower():
-                logger.warning(f"Content type is not HTML: {content_type} for URL: {url}")
-                return ""
-            
-            # Get the HTML content with a streaming approach
-            html_content = await response.text(errors='replace')
-            
-            # Use a faster parser
-            soup = BeautifulSoup(html_content, 'html.parser')
-            
-            # Remove script, style, and other irrelevant elements
-            for element in soup(['script', 'style', 'meta', 'noscript', 'header', 'footer', 'nav']):
-                element.decompose()
-            
-            # Extract only main content areas
-            main_content = soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'article', 'section', 'div.content'])
-            
-            # If we found specific content elements, use them; otherwise, use the whole body
-            if main_content:
-                text = ' '.join(element.get_text(strip=True) for element in main_content)
+            # Prepare headers with compression support based on available libraries
+            headers = dict(REQUEST_HEADERS)
+            if BROTLI_AVAILABLE:
+                # If Brotli is available, accept it as a content encoding
+                headers['Accept-Encoding'] = 'gzip, deflate, br'
             else:
-                text = soup.get_text(separator=' ', strip=True)
+                # If Brotli is not available, only accept gzip and deflate
+                headers['Accept-Encoding'] = 'gzip, deflate'
             
-            # Clean up text effectively
-            text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with single space
-            text = text[:MAX_CONTENT_LENGTH] + ("..." if len(text) > MAX_CONTENT_LENGTH else "")
+            async with session.get(
+                url, 
+                headers=headers,
+                timeout=CONTENT_TIMEOUT,
+                allow_redirects=True,
+                ssl=False  # Skip SSL verification
+            ) as response:
+                if response.status != 200:
+                    logger.warning(f"Got status {response.status} when extracting content from {url}")
+                    return ""
+                
+                # Check content type to ensure it's HTML
+                content_type = response.headers.get('Content-Type', '')
+                if 'text/html' not in content_type.lower():
+                    logger.warning(f"Content type is not HTML: {content_type} for URL: {url}")
+                    return ""
+                
+                # Get the HTML content
+                return await response.text(errors='replace')
+        
+        # Make the request with retries
+        html_content = await retry_with_backoff(fetch_url_content, max_retries=2, base_delay=0.5)
+        
+        # Skip processing if no content was retrieved
+        if not html_content:
+            return ""
+        
+        # Use a faster parser
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Remove script, style, and other irrelevant elements
+        for element in soup(['script', 'style', 'meta', 'noscript', 'header', 'footer', 'nav']):
+            element.decompose()
+        
+        # Try to find the main content using common selectors
+        text = ""
+        # 1. First check for common article content containers
+        article_containers = soup.select('article, .article, .post, .content, .entry, #article, #content, main, .main-content, [role="main"]')
+        
+        if article_containers:
+            for container in article_containers:
+                container_text = container.get_text(separator=' ', strip=True)
+                if len(container_text) > len(text):
+                    text = container_text
+        
+        # 2. If no article containers or text is too short, try common paragraph selectors
+        if not text or len(text) < 200:
+            paragraphs = soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'li'])
+            if paragraphs:
+                text = ' '.join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+        
+        # 3. As a last resort, get all text
+        if not text or len(text) < 200:
+            text = soup.get_text(separator=' ', strip=True)
+        
+        # Clean up text effectively
+        text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with single space
+        text = text[:MAX_CONTENT_LENGTH] + ("..." if len(text) > MAX_CONTENT_LENGTH else "")
             
-            logger.debug(f"Successfully extracted {len(text)} characters from {url}")
-            return text
+        logger.debug(f"Successfully extracted {len(text)} characters from {url}")
+        return text
         
     except (aiohttp.ClientError, asyncio.TimeoutError, UnicodeDecodeError) as e:
         logger.error(f"Error extracting content from {url}: {str(e)}")
-        return ""
+        return f"Error extracting content: {str(e)}"
     except Exception as e:
         logger.exception(f"Unexpected error extracting content from {url}: {str(e)}")
-        return ""
+        return f"Unexpected error: {str(e)}"
 
 async def search_and_extract(query: str, num_results: int = 3) -> List[Dict[str, Any]]:
     """
@@ -183,23 +258,40 @@ async def search_and_extract(query: str, num_results: int = 3) -> List[Dict[str,
     sem = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     
     async def extract_with_semaphore(result):
-        async with sem:
-            content = await extract_content_from_url(result['url'])
+        try:
+            async with sem:
+                content = await extract_content_from_url(result['url'])
+                return {
+                    'title': result['title'],
+                    'url': result['url'],
+                    'snippet': result['snippet'],
+                    'content': content
+                }
+        except Exception as e:
+            logger.error(f"Error extracting content from {result['url']}: {str(e)}")
+            # Return result with empty content instead of failing
             return {
                 'title': result['title'],
                 'url': result['url'],
                 'snippet': result['snippet'],
-                'content': content
+                'content': f"Failed to extract content: {str(e)}"
             }
     
     # Create extraction tasks
     tasks = [extract_with_semaphore(result) for result in search_results]
     
     # Wait for all extraction tasks to complete with timeout
-    results_with_content = await asyncio.gather(*tasks)
+    results_with_content = await asyncio.gather(*tasks, return_exceptions=True)
     
-    # Filter out empty results
-    valid_results = [r for r in results_with_content if r['content']]
+    # Filter out exceptions and empty results
+    valid_results = []
+    for i, result in enumerate(results_with_content):
+        if isinstance(result, Exception):
+            logger.error(f"Error extracting content from {search_results[i]['url']}: {str(result)}")
+            continue
+        if result and result.get('content'):
+            valid_results.append(result)
+    
     logger.info(f"Extracted content from {len(valid_results)} out of {len(search_results)} search results for query: {query}")
     
     return valid_results
@@ -241,8 +333,20 @@ async def search_information(search_query: str, num_results: int = 5) -> str:
             # Search and extract content
             results = await search_and_extract(search_query, num_results)
             
+            # If no results found, try with a modified query or different approach
             if not results:
-                no_results_msg = "No results found for the given query."
+                logger.warning(f"No results found for '{search_query}', trying with modified query")
+                # Try with a simplified query (remove special characters and extra words)
+                simplified_query = re.sub(r'[^\w\s]', '', search_query)
+                simplified_query = re.sub(r'\b(what|how|when|where|who|is|are|the|a|an)\b', '', simplified_query, flags=re.IGNORECASE)
+                simplified_query = re.sub(r'\s+', ' ', simplified_query).strip()
+                
+                if simplified_query and simplified_query != search_query:
+                    logger.info(f"Trying simplified query: '{simplified_query}'")
+                    results = await search_and_extract(simplified_query, num_results)
+            
+            if not results:
+                no_results_msg = "No results found for the given query. Try rephrasing your question or using different keywords."
                 logger.warning(f"{no_results_msg} Query: {search_query}")
                 return no_results_msg
             
